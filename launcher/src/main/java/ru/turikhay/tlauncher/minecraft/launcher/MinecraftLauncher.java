@@ -40,6 +40,7 @@ import ru.turikhay.tlauncher.minecraft.auth.Account;
 import ru.turikhay.tlauncher.minecraft.crash.CrashManager;
 import ru.turikhay.tlauncher.pasta.Pasta;
 import ru.turikhay.tlauncher.pasta.PastaFormat;
+import ru.turikhay.tlauncher.portals.Portals;
 import ru.turikhay.tlauncher.stats.Stats;
 import ru.turikhay.tlauncher.ui.alert.Alert;
 import ru.turikhay.tlauncher.ui.loc.Localizable;
@@ -109,7 +110,6 @@ public class MinecraftLauncher implements JavaProcessListener {
     private int ramSize;
     private OptionsFile optionsFile;
     private JavaProcessLauncher launcher;
-    private String programArgs;
     private boolean minecraftWorking;
     private long startupTime;
     private int exitCode;
@@ -525,13 +525,6 @@ public class MinecraftLauncher implements JavaProcessListener {
             throw new RuntimeException("Cannot create native files directory!", var5);
         }
 
-        programArgs = settings.get("minecraft.args");
-        if (programArgs != null && programArgs.isEmpty()) {
-            programArgs = null;
-        }
-
-        LOGGER.trace("Args: {}", programArgs);
-
         windowSize = settings.getClientWindowSize();
         LOGGER.trace("Window size: {}", windowSize);
         if (windowSize[0] < 1) {
@@ -897,9 +890,11 @@ public class MinecraftLauncher implements JavaProcessListener {
         ArrayList<String> jvmArgs = new ArrayList<>(), programArgs = new ArrayList<>();
         createJvmArgs(jvmArgs);
 
-        if (this.programArgs != null) {
-            programArgs.addAll(Arrays.asList(StringUtils.split(this.programArgs, ' ')));
-        }
+        javaManagerConfig.getMinecraftArgs().ifPresent(s -> {
+            List<String> userArgs = Arrays.asList(StringUtils.split(s, ' '));
+            LOGGER.info("Appending user args (after classpath): {}", userArgs);
+            programArgs.addAll(userArgs);
+        });
 
         launcher = new JavaProcessLauncher(charset, Objects.requireNonNull(jreExec, "jreExec"), new String[0]);
         launcher.directory(isLauncher ? rootDir : gameDir);
@@ -1624,6 +1619,8 @@ public class MinecraftLauncher implements JavaProcessListener {
         args.add("-XX:+DisableExplicitGC"); // Disable System.gc() calls
     }
 
+    private static final int ZGC_WINDOWS_BUILD = 17134;
+
     private void addOptimizedArguments(List<String> args) {
         int jreMajorVersion = getJreMajorVersion();
 
@@ -1635,11 +1632,13 @@ public class MinecraftLauncher implements JavaProcessListener {
         // I want Kotlin's when {}
         // Is enough power and Java 15+ => ZGC
         // ZGC requires A LOT of heap on start
-        if (
-                (!OS.WINDOWS.isCurrent() || OS.VERSION.startsWith("1"))
-                        && jreMajorVersion >= 15
-                        && OS.Arch.AVAILABLE_PROCESSORS >= 8 && ramSize >= 8192
-        ) {
+        boolean supportsZgc;
+        if (OS.WINDOWS.isCurrent()) {
+            supportsZgc = JNAWindows.getBuildNumber().filter(build -> build >= ZGC_WINDOWS_BUILD).isPresent();
+        } else {
+            supportsZgc = true;
+        }
+        if (supportsZgc && jreMajorVersion >= 15 && OS.Arch.AVAILABLE_PROCESSORS >= 8 && ramSize >= 8192) {
             addZGCOptimizedArguments(args);
             return;
         }
@@ -1656,9 +1655,11 @@ public class MinecraftLauncher implements JavaProcessListener {
     }
 
     private void createJvmArgs(List<String> args) {
-        javaManagerConfig.getArgs().ifPresent(s ->
-                args.addAll(Arrays.asList(StringUtils.split(s, ' ')))
-        );
+        javaManagerConfig.getArgs().ifPresent(s -> {
+            List<String> userArgs = Arrays.asList(StringUtils.split(s, ' '));
+            LOGGER.info("Appending user JVM arguments: {}", userArgs);
+            args.addAll(userArgs);
+        });
         if (javaManagerConfig.useOptimizedArguments()) {
             addOptimizedArguments(args);
         }
@@ -1902,6 +1903,8 @@ public class MinecraftLauncher implements JavaProcessListener {
 
     @Override
     public void onJavaProcessEnded(JavaProcess jp) {
+        Portals.getPortal().minecraftProcessDestroyed(jp.getRawProcess());
+
         notifyClose();
 
         int exit = jp.getExitCode();
@@ -2196,7 +2199,7 @@ public class MinecraftLauncher implements JavaProcessListener {
         }
         if (buildOpt.get() < GPU_PREFERENCE_WINDOWS_BUILD) {
             LOGGER.info("Current Windows build ({}) doesn't support setting GPU preference " +
-                    "through registry", GPU_PREFERENCE_WINDOWS_BUILD);
+                    "through registry", buildOpt.get());
             return;
         }
         if (!Paths.get(jreExec).isAbsolute()) {

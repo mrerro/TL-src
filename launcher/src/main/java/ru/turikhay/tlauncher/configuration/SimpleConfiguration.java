@@ -8,6 +8,10 @@ import ru.turikhay.util.StringUtil;
 import java.io.*;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -204,14 +208,22 @@ public class SimpleConfiguration implements AbstractConfiguration {
         return false;
     }
 
-    public void save() throws IOException {
+    public synchronized void save() throws IOException {
         if (!isSaveable()) {
             throw new UnsupportedOperationException();
-        } else {
-            File file = (File) input;
-            FileUtil.createFile(file);
-            properties.store(new FileOutputStream(file), comments);
         }
+        Properties propsToSave = processSavingProperties(properties);
+        File file = (File) input;
+        File tmpFile = new File(file.getAbsolutePath() + ".tmp");
+        FileUtil.createFile(tmpFile);
+        try (FileOutputStream stream = new FileOutputStream(tmpFile)) {
+            propsToSave.store(stream, comments);
+        }
+        Files.move(tmpFile.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    protected Properties processSavingProperties(Properties og) {
+        return og;
     }
 
     public void store() {
@@ -310,8 +322,9 @@ public class SimpleConfiguration implements AbstractConfiguration {
         if (file == null) {
             throw new NullPointerException();
         } else {
-            FileInputStream stream = new FileInputStream(file);
-            loadFromStream(properties, stream);
+            try (FileInputStream stream = new FileInputStream(file)) {
+                loadFromStream(properties, stream);
+            }
         }
     }
 

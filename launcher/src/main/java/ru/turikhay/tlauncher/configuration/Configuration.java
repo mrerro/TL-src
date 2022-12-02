@@ -144,7 +144,7 @@ public class Configuration extends SimpleConfiguration {
         if (!DEFAULT_LOCALES.get().contains(locale)) {
             LOGGER.debug("We don't have localization for {}", locale);
 
-            if (isUSSRLocale(locale.toString()) && DEFAULT_LOCALES.get().contains(LangConfiguration.ru_RU)) {
+            if (isLikelyRussianSpeakingLocale(locale.toString()) && DEFAULT_LOCALES.get().contains(LangConfiguration.ru_RU)) {
                 locale = LangConfiguration.ru_RU;
             } else {
                 locale = Locale.US;
@@ -191,8 +191,8 @@ public class Configuration extends SimpleConfiguration {
         return U.getLocale(get("locale"));
     }
 
-    public boolean isUSSRLocale() {
-        return isUSSRLocale(getLocale().toString());
+    public boolean isLikelyRussianSpeakingLocale() {
+        return isLikelyRussianSpeakingLocale(getLocale().toString());
     }
 
     public Locale[] getLocales() {
@@ -365,19 +365,13 @@ public class Configuration extends SimpleConfiguration {
         setForcefully(key, value, true);
     }
 
-    public void save() throws IOException {
-        if (!isSaveable()) {
-            throw new UnsupportedOperationException();
-        } else {
-            Properties temp = copyProperties(properties);
-
-            for (String constant : configFromArgs.constants()) {
-                temp.remove(constant);
-            }
-
-            File file1 = (File) input;
-            temp.store(new FileOutputStream(file1), comments);
+    @Override
+    protected Properties processSavingProperties(Properties og) {
+        Properties temp = copyProperties(properties);
+        for (String constant : configFromArgs.constants()) {
+            temp.remove(constant);
         }
+        return temp;
     }
 
     public <C extends Configurable> C get(Class<C> configurable) {
@@ -427,7 +421,7 @@ public class Configuration extends SimpleConfiguration {
     }
 
 
-    public static boolean isUSSRLocale(String l) {
+    public static boolean isLikelyRussianSpeakingLocale(String l) {
         return "ru_RU".equals(l) || "uk_UA".equals(l) || "be_BY".equals(l);
     }
 

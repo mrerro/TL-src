@@ -1,11 +1,18 @@
 package ru.turikhay.tlauncher.repository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class RepoPrefixV1 {
+    private static final Logger LOGGER = LoggerFactory.getLogger(RepoPrefixV1.class);
+
     private static final List<String> PREFIXES;
     private static final List<String> CDN_PREFIXES;
 
@@ -17,7 +24,7 @@ public class RepoPrefixV1 {
         )) {
             props.load(reader);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.warn("Couldn't load internal repo list: ", e);
         }
         final List<String> domains = getList(props, "domains", Arrays.asList("tlaun.ch", "tln4.ru"));
         List<String> prefixes = combine(
@@ -28,9 +35,14 @@ public class RepoPrefixV1 {
                         getList(props, "ru_prefixes", Collections.singletonList("ru01-www"))
                 )
         ).stream().flatMap(zone ->
-                domains.stream().map(domain ->
-                        String.format(Locale.ROOT, "https://%s.%s", zone, domain)
-                )
+                        Stream.of(
+                                domains.stream().map(domain -> String.format(Locale.ROOT, "https://%s", domain)),
+                                domains.stream().map(domain ->
+                                        String.format(Locale.ROOT, "https://%s.%s", zone, domain)
+                                )
+                        ).flatMap(
+                                Function.identity()
+                        )
         ).collect(
                 Collectors.toList()
         );
